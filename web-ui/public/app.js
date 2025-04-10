@@ -1,174 +1,369 @@
 document.addEventListener('DOMContentLoaded', () => {
     const API_URL = 'http://localhost:3000';
-    
+    const REFRESH_INTERVAL = 15000; // 15 seconds
+    let currentSession = localStorage.getItem('walletSession');
+    let currentWallet = null;
+
     // DOM Elements
-    const blocksContainer = document.getElementById('blocks');
-    const mempoolContainer = document.getElementById('mempool');
-    const balancesContainer = document.getElementById('balances');
-    const transactionForm = document.getElementById('transactionForm');
-    
-    // Generate a random address for this session
-    const myAddress = 'user-' + Math.random().toString(36).substring(2, 8);
-    document.getElementById('fromAddress').value = myAddress;
-    
-    // Display the user's address
-    const addressDisplay = document.createElement('div');
-    addressDisplay.innerHTML = `<p>Your address: <strong>${myAddress}</strong></p>`;
-    document.querySelector('.transaction-section').prepend(addressDisplay);
-    
-    // Fetch and display blockchain
+    const elements = {
+        modal: createModal(),
+        blocksContainer: document.getElementById('blocks'),
+        mempoolContainer: document.getElementById('mempool'),
+        balancesContainer: document.getElementById('balances'),
+        transactionForm: document.getElementById('transactionForm')
+    };
+
+    // Initialization
+    initializeApplication();
+
+    // --------------------------
+    // Core Functions
+    // --------------------------
+
+    function initializeApplication() {
+        document.body.appendChild(elements.modal);
+        setupEventListeners();
+        checkExistingSession();
+        loadInitialData();
+        setupDataRefresh();
+    }
+
+    async function checkExistingSession() {
+        if (!currentSession) {
+            elements.modal.style.display = 'block';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/validate-session`, {
+                headers: { 'Authorization': currentSession }
+            });
+            
+            if (response.ok) {
+                currentWallet = await response.json();
+                showWalletInfo();
+            }
+        } catch (error) {
+            console.error('Session validation failed:', error);
+            elements.modal.style.display = 'block';
+        }
+    }
+
+    // --------------------------
+    // Wallet Management
+    // --------------------------
+
+    function createModal() {
+        const modal = document.createElement('div');
+        modal.id = 'walletModal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2>Connect Wallet</h2>
+                <div id="walletOptions">
+                    <button id="connectOwner">Connect Owner Wallet</button>
+                    <button id="createWallet">Create New Wallet</button>
+                </div>
+                <div id="loginForm" style="display:none;">
+                    <input type="text" id="privateKey" placeholder="Private Key">
+                    <button id="submitLogin">Connect</button>
+                </div>
+            </div>
+        `;
+        return modal;
+    }
+
+    async function handleWalletCreation() {
+        try {
+            const response = await fetch(`${API_URL}/create-wallet`);
+            const wallet = await response.json();
+            
+            // Show private key to user
+            const shouldSave = confirm(`New wallet created!\n\nAddress: ${wallet.address}\nPrivate Key: ${wallet.privateKey}\n\nSAVE THIS PRIVATE KEY NOW. Click OK to continue.`);
+            
+            if (shouldSave) {
+                currentSession = wallet.sessionToken;
+                currentWallet = wallet;
+                
+                localStorage.setItem('walletSession', currentSession);
+                elements.modal.style.display = 'none';
+                
+                showWalletInfo();
+                loadData();
+            } else {
+                await fetch(`${API_URL}/delete-wallet`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': wallet.sessionToken
+                    }
+                });
+                alert('Wallet creation canceled');
+            }
+        } catch (error) {
+            console.error('Wallet creation failed:', error);
+            alert('Wallet creation failed: ' + error.message);
+        }
+    }
+
+    async function handleOwnerLogin(privateKey) {
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ privateKey })
+            });
+
+            if (!response.ok) throw new Error('Login failed');
+
+            const { sessionToken, wallet } = await response.json();
+            
+            currentSession = sessionToken;
+            currentWallet = wallet;
+            
+            localStorage.setItem('walletSession', currentSession);
+            elements.modal.style.display = 'none';
+            
+            showWalletInfo();
+            loadData();
+        } catch (error) {
+            console.error('Login error:', error);
+            alert('Invalid private key or connection error');
+        }
+    }
+
+    function showWalletInfo() {
+        const walletInfo = document.createElement('div');
+        walletInfo.id = 'walletInfo';
+        walletInfo.innerHTML = `
+            <p>Connected Wallet: ${currentWallet.address.substring(0, 20)}...</p>
+            <p>Balance: <span id="walletBalance">Loading...</span></p>
+            <button id="disconnect">Disconnect</button>
+        `;
+        
+        document.querySelector('.container').prepend(walletInfo);
+        updateWalletBalance();
+    }
+
+    async function updateWalletBalance() {
+        try {
+            const balance = await getBalance(currentWallet.address);
+            document.getElementById('walletBalance').textContent = 
+                `${balance} eumfCoin`;
+        } catch (error) {
+            console.error('Balance update failed:', error);
+        }
+    }
+
+    // --------------------------
+    // Data Management
+    // --------------------------
+
+    async function loadInitialData() {
+        await Promise.all([
+            loadBlockchain(),
+            loadMempool(),
+            loadBalances()
+        ]);
+    }
+
+    function setupDataRefresh() {
+        setInterval(() => {
+            loadData();
+            if (currentWallet) updateWalletBalance();
+        }, REFRESH_INTERVAL);
+    }
+
+    async function loadData() {
+        await Promise.all([
+            loadBlockchain(),
+            loadMempool(),
+            loadBalances()
+        ]);
+    }
+
     async function loadBlockchain() {
         try {
             const response = await fetch(`${API_URL}/blocks`);
             const blocks = await response.json();
-            
-            blocksContainer.innerHTML = '';
-            blocks.forEach(block => {
-                const blockElement = document.createElement('div');
-                blockElement.className = 'block';
-                blockElement.innerHTML = `
-                    <h3>Block #${block.index}</h3>
-                    <p>Hash: ${block.hash.substring(0, 15)}...</p>
-                    <p>Prev: ${block.previousHash.substring(0, 15)}...</p>
-                    <p>Transactions: ${block.transactions.length}</p>
-                    <button onclick="showBlockDetails(${block.index})">Details</button>
-                `;
-                blocksContainer.appendChild(blockElement);
-            });
+            renderBlocks(blocks);
         } catch (error) {
-            console.error('Error loading blockchain:', error);
+            console.error('Blockchain load error:', error);
         }
     }
-    
-    // Fetch and display mempool
+
     async function loadMempool() {
         try {
             const response = await fetch(`${API_URL}/mempool`);
             const transactions = await response.json();
-            
-            mempoolContainer.innerHTML = '';
-            transactions.forEach(tx => {
-                const txElement = document.createElement('div');
-                txElement.className = 'transaction';
-                txElement.innerHTML = `
-                    <p>From: ${tx.from || 'Coinbase'}</p>
-                    <p>To: ${tx.to}</p>
-                    <p>Amount: ${tx.amount}</p>
-                `;
-                mempoolContainer.appendChild(txElement);
-            });
+            renderMempool(transactions);
         } catch (error) {
-            console.error('Error loading mempool:', error);
+            console.error('Mempool load error:', error);
         }
     }
-    
-    // Fetch and display wallet balances
+
     async function loadBalances() {
         try {
             const response = await fetch(`${API_URL}/blocks`);
             const blocks = await response.json();
-            
-            // Extract all unique addresses
-            const addresses = new Set();
-            blocks.forEach(block => {
-                block.transactions.forEach(tx => {
-                    if (tx.from) addresses.add(tx.from);
-                    if (tx.to) addresses.add(tx.to);
-                });
-            });
-            
-            // Add our address if it's new
-            addresses.add(myAddress);
-            
-            balancesContainer.innerHTML = '<h3>Wallet Balances</h3>';
-            for (const address of addresses) {
-                const balanceResponse = await fetch(`${API_URL}/balance/${address}`);
-                const balanceData = await balanceResponse.json();
-                
-                const balanceElement = document.createElement('div');
-                balanceElement.innerHTML = `
-                    <p>Address: ${address}</p>
-                    <p>Balance: ${balanceData.balance} coins</p>
-                    <hr>
-                `;
-                balancesContainer.appendChild(balanceElement);
-            }
+            const addresses = extractAddresses(blocks);
+            renderBalances(addresses);
         } catch (error) {
-            console.error('Error loading balances:', error);
+            console.error('Balances load error:', error);
         }
     }
-    
-    // Handle transaction submission
-    transactionForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const fromAddress = document.getElementById('fromAddress').value;
-        const toAddress = document.getElementById('toAddress').value;
-        const amount = parseFloat(document.getElementById('amount').value);
-        
+
+    // --------------------------
+    // Render Functions
+    // --------------------------
+
+    function renderBlocks(blocks) {
+        elements.blocksContainer.innerHTML = blocks.map(block => `
+            <div class="block">
+                <h3>Block #${block.index}</h3>
+                <p>Hash: ${block.hash.substring(0, 15)}...</p>
+                <p>Prev: ${block.previousHash.substring(0, 15)}...</p>
+                <p>Transactions: ${block.transactions.length}</p>
+                <button onclick="showBlockDetails(${block.index})">Details</button>
+            </div>
+        `).join('');
+    }
+
+    function renderMempool(transactions) {
+        elements.mempoolContainer.innerHTML = transactions.map(tx => `
+            <div class="transaction">
+                <p>From: ${tx.from || 'Coinbase'}</p>
+                <p>To: ${tx.to}</p>
+                <p>Amount: ${tx.amount}</p>
+            </div>
+        `).join('');
+    }
+
+    async function renderBalances(addresses) {
         try {
-            const response = await fetch(`${API_URL}/transaction`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    from: fromAddress,
-                    to: toAddress,
-                    amount: amount
-                })
+            // Always include current wallet if exists
+            if (currentWallet) {
+                addresses.add(currentWallet.address);
+            }
+            
+            const balancePromises = Array.from(addresses).map(async address => {
+                const response = await fetch(`${API_URL}/balance/${address}`);
+                return response.json();
             });
             
-            const result = await response.json();
-            alert(result.message || 'Transaction submitted');
-            loadMempool();
-            loadBalances();
+            const balances = await Promise.all(balancePromises);
+            
+            elements.balancesContainer.innerHTML = `
+                <h3>Wallet Balances</h3>
+                ${balances.map(({ address, balance }) => `
+                    <div class="balance-item ${address === currentWallet?.address ? 'current-wallet' : ''}">
+                        <p>Address: ${address.substring(0, 12)}...</p>
+                        <p>Balance: ${balance} eumfCoin</p>
+                    </div>
+                `).join('')}
+            `;
         } catch (error) {
-            console.error('Transaction error:', error);
-            alert('Error submitting transaction: ' + error.message);
+            console.error('Balance render error:', error);
+            elements.balancesContainer.innerHTML = '<div class="error">Error loading balances</div>';
         }
-    });
-    
-    // Global function to show block details
+    }
+
+    // --------------------------
+    // Utility Functions
+    // --------------------------
+
+    function extractAddresses(blocks) {
+        const addresses = new Set();
+        blocks.forEach(block => {
+            block.transactions.forEach(tx => {
+                if (tx.from) addresses.add(tx.from);
+                if (tx.to) addresses.add(tx.to);
+            });
+        });
+        return Array.from(addresses);
+    }
+
+    async function getBalance(address) {
+        const response = await fetch(`${API_URL}/balance/${address}`);
+        const data = await response.json();
+        return data.balance;
+    }
+
+    // --------------------------
+    // Event Handlers
+    // --------------------------
+
+    function setupEventListeners() {
+        // Wallet Management
+        document.getElementById('connectOwner').addEventListener('click', () => {
+            document.getElementById('walletOptions').style.display = 'none';
+            document.getElementById('loginForm').style.display = 'block';
+        });
+
+        document.getElementById('createWallet').addEventListener('click', handleWalletCreation);
+        document.getElementById('submitLogin').addEventListener('click', () => {
+            const privateKey = document.getElementById('privateKey').value;
+            handleOwnerLogin(privateKey);
+        });
+
+        // Transaction Handling
+        elements.transactionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const to = document.getElementById('toAddress').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            try {
+                const response = await fetch(`${API_URL}/transaction`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': currentSession
+                    },
+                    body: JSON.stringify({ to, amount })
+                });
+
+                if (response.ok) {
+                    alert('Transaction submitted!');
+                    loadData();
+                }
+            } catch (error) {
+                alert('Transaction failed: ' + error.message);
+            }
+        });
+
+        // Disconnect Handler
+        document.addEventListener('click', (e) => {
+            if (e.target.id === 'disconnect') {
+                localStorage.removeItem('walletSession');
+                window.location.reload();
+            }
+        });
+    }
+
+    // Global Function
     window.showBlockDetails = async (blockIndex) => {
         try {
             const response = await fetch(`${API_URL}/blocks`);
             const blocks = await response.json();
             const block = blocks[blockIndex];
             
-            let transactionsHTML = '';
-            block.transactions.forEach(tx => {
-                transactionsHTML += `
-                    <div class="transaction">
-                        <p>From: ${tx.from || 'Coinbase'}</p>
-                        <p>To: ${tx.to}</p>
-                        <p>Amount: ${tx.amount}</p>
-                    </div>
-                `;
-            });
-            
+            const transactionsHTML = block.transactions.map(tx => `
+                <div class="transaction">
+                    <p>From: ${tx.from || 'Coinbase'}</p>
+                    <p>To: ${tx.to}</p>
+                    <p>Amount: ${tx.amount}</p>
+                </div>
+            `).join('');
+
             alert(`
                 Block #${block.index}
                 Hash: ${block.hash}
                 Previous Hash: ${block.previousHash}
                 Timestamp: ${new Date(block.timestamp).toLocaleString()}
                 Nonce: ${block.nonce}
-                
-                Transactions:
-                ${transactionsHTML}
+                Transactions: ${transactionsHTML}
             `);
         } catch (error) {
-            console.error('Error showing block details:', error);
+            console.error('Block details error:', error);
         }
     };
-    
-    // Initial load
-    loadBlockchain();
-    loadMempool();
-    loadBalances();
-    
-    // Refresh every 15 seconds
-    setInterval(() => {
-        loadBlockchain();
-        loadMempool();
-        loadBalances();
-    }, 15000);
 });
