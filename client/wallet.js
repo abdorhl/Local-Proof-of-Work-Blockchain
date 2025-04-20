@@ -18,10 +18,16 @@ class Wallet {
         return crypto.createHash('sha256').update(this.publicKey).digest('hex');
     }
     
-    signTransaction(transaction) {
-        const sign = crypto.createSign('SHA256');
-        sign.update(JSON.stringify(transaction));
-        return sign.sign(this.privateKey, 'hex');
+    signTransaction(txHash) {
+        const signature = this.key.sign(txHash);
+        return {
+          r: signature.r.toString('hex'),
+          s: signature.s.toString('hex'),
+          recoveryParam: signature.recoveryParam
+        };
+      }
+    getAddress() {
+        return this.key.getPublic('hex');
     }
 }
 

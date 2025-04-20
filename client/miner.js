@@ -1,6 +1,11 @@
 const axios = require('axios');
 
-const API_URL = 'http://localhost:3000';
+// AbbuCoin Miner client
+// Use environment variable to determine the API URL (for Docker compatibility)
+const API_URL = process.env.NODE_ENV === 'production' 
+    ? 'http://blockchain-server:3000'  // Docker service name
+    : 'http://localhost:3001';         // Local development
+    
 const MINER_ADDRESS = 'miner-address-1'; // Just a string identifier
 
 async function mineBlock() {
@@ -30,4 +35,5 @@ async function mineBlock() {
 // Mine every 30 seconds
 setInterval(mineBlock, 30000);
 
-console.log(`Miner started with address: ${MINER_ADDRESS}`);
+console.log(`AbbuCoin Miner started with address: ${MINER_ADDRESS}`);
+console.log(`Using API_URL: ${API_URL}`);

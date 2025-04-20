@@ -10,13 +10,31 @@ const app = express();
 const blockchain = new Blockchain();
 const EC = new ec('secp256k1');
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration - allow all origins with no restrictions
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Max-Age', '3600');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  next();
+});
+
+// Keep the existing CORS for compatibility
 app.use(cors({
-  origin: 'http://127.0.0.1:5500',
-  methods: ['GET', 'POST'],
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 204
 }));
+
 app.use(bodyParser.json());
 
 // --------------------------
@@ -86,14 +104,38 @@ app.post('/login', (req, res) => {
     try {
       const { privateKey } = req.body;
       
-      // Case-insensitive comparison with trim
-      const wallet = blockchain.wallets.find(w => 
-        w.privateKey.toLowerCase().trim() === privateKey.toLowerCase().trim()
-      );
-  
-      if (!wallet) {
-        return res.status(401).json({ error: 'Invalid private key' });
+      console.log('Login attempt received');
+      
+      if (!privateKey) {
+        console.error('No private key provided');
+        return res.status(400).json({ error: 'Private key is required' });
       }
+      
+      console.log('Finding wallet for key:', privateKey.substring(0, 5) + '...');
+      
+      // Normalize the private key for comparison
+      const normalizedInput = privateKey.toLowerCase().trim();
+      
+      // Get all wallets and their normalized keys for logging
+      const walletsWithKeys = blockchain.wallets.map(w => ({
+        address: w.address,
+        keyPreview: w.privateKey.substring(0, 5) + '...',
+        normalizedKey: w.privateKey.toLowerCase().trim()
+      }));
+      
+      console.log('Available wallets:', walletsWithKeys);
+      
+      // Find the wallet with the matching private key
+      const wallet = blockchain.wallets.find(w => 
+        w.privateKey.toLowerCase().trim() === normalizedInput
+      );
+      
+      if (!wallet) {
+        console.log('No matching wallet found');
+        return res.status(401).json({ error: 'Invalid private key - no matching wallet found' });
+      }
+      
+      console.log('Wallet found:', wallet.address);
   
       const sessionToken = crypto.randomBytes(32).toString('hex');
       blockchain.sessions[sessionToken] = {
@@ -101,21 +143,42 @@ app.post('/login', (req, res) => {
         expires: Date.now() + 3600000 // 1 hour
       };
       blockchain.saveSessions();
+      
+      console.log('Session created with token:', sessionToken.substring(0, 10) + '...');
   
       res.json({ 
         sessionToken,
         wallet: {
           address: wallet.address,
+          privateKey: wallet.privateKey,
           balance: blockchain.getBalanceOfAddress(wallet.address),
           isOwner: wallet.isOwner
         }
       });
+      
+      console.log('Login response sent successfully');
   
     } catch (error) {
       console.error('Login error:', error);
-      res.status(500).json({ error: 'Login failed' });
+      res.status(500).json({ error: 'Login failed: ' + error.message });
     }
-  });
+});
+
+// Add to server.js
+app.post('/logout', (req, res) => {
+  try {
+      const token = req.headers.authorization;
+      if (!token || !blockchain.sessions[token]) {
+          return res.status(401).json({ error: 'Invalid session' });
+      }
+      delete blockchain.sessions[token];
+      blockchain.saveSessions();
+      res.json({ success: true });
+  } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ error: 'Logout failed' });
+  }
+});
 
 app.get('/validate-session', (req, res) => {
   try {
@@ -198,7 +261,18 @@ app.post('/transaction', (req, res) => {
     }
 
     blockchain.addTransaction(transaction);
-    res.json({ message: 'Transaction added to mempool' });
+    
+    // Return updated balance information
+    res.json({ 
+      message: 'Transaction added to mempool',
+      updatedBalance: wallet.balance,
+      transactionInfo: {
+        from: transaction.from,
+        to: transaction.to,
+        amount: transaction.amount,
+        timestamp: Date.now()
+      }
+    });
 
   } catch (error) {
     console.error('Transaction error:', error.message);
@@ -211,16 +285,46 @@ app.get('/blocks', (req, res) => {
     res.json(blockchain.chain);
   });
 
+// Add this mining endpoint
+app.post('/mine', (req, res) => {
+  const { minerAddress } = req.body;
+  if (!minerAddress) {
+    return res.status(400).send('Missing miner address');
+  }
+
+  try {
+    const block = blockchain.minePendingTransactions(minerAddress);
+    res.json({
+      message: 'New block mined successfully',
+      block
+    });
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+// Add the missing mempool endpoint
+app.get('/mempool', (req, res) => {
+  res.json(blockchain.pendingTransactions || []);
+});
+
 // --------------------------
 // Server Initialization
 // --------------------------
 
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log('Initial wallets:', blockchain.wallets);
-    console.log('Owner address:', blockchain.wallets.find(w => w.isOwner)?.address);
-    console.log('Owner private key:', blockchain.wallets.find(w => w.isOwner)?.privateKey);
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Access the API at http://localhost:${PORT}`);
+  console.log(`In Docker, external access is on port 3001`);
+  console.log(`Initial wallets:`, JSON.stringify(blockchain.wallets, null, 2));
+  
+  const ownerWallet = blockchain.wallets.find(w => w.isOwner);
+  if (ownerWallet) {
+    console.log(`Owner address: ${ownerWallet.address}`);
+    console.log(`Owner private key: ${ownerWallet.privateKey}`);
+  }
 });
 
 // Enhanced mining interval
@@ -237,3 +341,5 @@ setInterval(() => {
     console.error('Auto-mining error:', error);
   }
 }, blockchain.blockInterval);
+
+

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  blockchain-server:
+    build: .
+    ports:
+      - "3001:3000"
+    volumes:
+      - blockchain-data:/app/data
+    command: npm start
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DATA_DIR=/app/data
+      - PORT=3000
+    networks:
+      abbucoin-network:
+        aliases:
+          - blockchain-server
+
+  blockchain-miner:
+    build: .
+    depends_on:
+      - blockchain-server
+    command: npm run start:miner
+    restart: always
+    environment:
+      - NODE_ENV=production
+    networks:
+      - abbucoin-network
+
+  web-ui:
+    build: .
+    ports:
+      - "8081:8080"
+    depends_on:
+      - blockchain-server
+    command: sh -c "cd web-ui && npx http-server -p 8080 --cors"
+    restart: always
+    environment:
+      - NODE_ENV=production
+    networks:
+      - abbucoin-network
+
+networks:
+  abbucoin-network:
+    driver: bridge
+
+volumes:
+  blockchain-data:
+    driver: local 

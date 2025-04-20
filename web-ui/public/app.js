@@ -3,6 +3,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const REFRESH_INTERVAL = 15000; // 15 seconds
     let currentSession = localStorage.getItem('walletSession');
     let currentWallet = null;
+    // Add UI event listeners here
+    document.getElementById('mineButton').addEventListener('click', mineBlock);
+
 
     // DOM Elements
     const elements = {
@@ -148,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const balance = await getBalance(currentWallet.address);
             document.getElementById('walletBalance').textContent = 
-                `${balance} eumfCoin`;
+                `${balance} AbbuCoin`;
         } catch (error) {
             console.error('Balance update failed:', error);
         }
@@ -257,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${balances.map(({ address, balance }) => `
                     <div class="balance-item ${address === currentWallet?.address ? 'current-wallet' : ''}">
                         <p>Address: ${address.substring(0, 12)}...</p>
-                        <p>Balance: ${balance} eumfCoin</p>
+                        <p>Balance: ${balance} AbbuCoin</p>
                     </div>
                 `).join('')}
             `;
@@ -338,6 +341,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    async function mineBlock() {
+        const minerAddress = document.getElementById('minerAddress').value;
+        try {
+          const response = await fetch('http://localhost:3000/mine', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ minerAddress })
+          });
+          const result = await response.json();
+          updateStatus(result.message);
+        } catch (error) {
+          updateStatus(`Mining error: ${error.message}`);
+        }
+      }
+      
+      function updateStatus(message) {
+        document.getElementById('status').textContent = message;
+      }
 
     // Global Function
     window.showBlockDetails = async (blockIndex) => {

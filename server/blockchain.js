@@ -4,6 +4,9 @@ const path = require('path');
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
 
+// Use data directory from environment variable or default to current directory
+const DATA_DIR = process.env.DATA_DIR || '.';
+
 class Block {
     constructor(index, timestamp, transactions, previousHash, nonce, hash) {
         this.index = index;
@@ -22,13 +25,13 @@ class Blockchain {
         this.difficulty = 2;
         this.blockReward = 50;
         this.blockInterval = 60000;
-        this.blocksDir = path.join(__dirname, 'blocks');
+        this.blocksDir = path.join(DATA_DIR, 'blocks');
         
         // Initialize wallets first
         this.wallets = this.loadWallets();
         this.sessions = this.loadSessions();
 
-        if (!fs.existsSync(this.blocksDir)) fs.mkdirSync(this.blocksDir);
+        if (!fs.existsSync(this.blocksDir)) fs.mkdirSync(this.blocksDir, { recursive: true });
         if (this.chain.length === 0) this.createGenesisBlock();
         else this.loadChainFromFiles();
 
@@ -40,7 +43,7 @@ class Blockchain {
 
     loadWallets() {
         try {
-            return JSON.parse(fs.readFileSync('wallets.json'));
+            return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'wallets.json')));
         } catch (error) {
             // Create new wallet file with owner
             const ownerWallet = this.createOwnerWallet(true);
@@ -50,18 +53,18 @@ class Blockchain {
 
     loadSessions() {
         try {
-            return JSON.parse(fs.readFileSync('sessions.json'));
+            return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'sessions.json')));
         } catch {
             return {};
         }
     }
 
     saveWallets() {
-        fs.writeFileSync('wallets.json', JSON.stringify(this.wallets, null, 2));
+        fs.writeFileSync(path.join(DATA_DIR, 'wallets.json'), JSON.stringify(this.wallets, null, 2));
     }
 
     saveSessions() {
-        fs.writeFileSync('sessions.json', JSON.stringify(this.sessions, null, 2));
+        fs.writeFileSync(path.join(DATA_DIR, 'sessions.json'), JSON.stringify(this.sessions, null, 2));
     }
 
     createOwnerWallet(initialCreation = false) {
@@ -77,7 +80,7 @@ class Blockchain {
             this.wallets.push(ownerWallet);
         }
         
-        fs.writeFileSync('wallets.json', JSON.stringify([ownerWallet], null, 2));
+        fs.writeFileSync(path.join(DATA_DIR, 'wallets.json'), JSON.stringify([ownerWallet], null, 2));
         return ownerWallet;
     }
 
@@ -177,7 +180,41 @@ class Blockchain {
         this.saveBlockToFile(newBlock);
         this.pendingTransactions = [];
         
+        // Update wallet balances after mining
+        this.updateWalletBalances(blockTransactions);
+        
         return newBlock;
+    }
+    
+    updateWalletBalances(transactions) {
+        // Update wallets with transaction amounts
+        transactions.forEach(tx => {
+            // Deduct from sender wallet if not a coinbase transaction
+            if (tx.from) {
+                const senderWallet = this.getWallet(tx.from);
+                if (senderWallet) {
+                    senderWallet.balance -= tx.amount;
+                }
+            }
+            
+            // Add to recipient wallet
+            const recipientWallet = this.getWallet(tx.to);
+            if (recipientWallet) {
+                recipientWallet.balance += tx.amount;
+            } else {
+                // Create wallet for recipient if it doesn't exist
+                const newWallet = {
+                    address: tx.to,
+                    balance: tx.amount,
+                    isOwner: false
+                };
+                this.wallets.push(newWallet);
+            }
+        });
+        
+        // Save updated wallets
+        this.saveWallets();
+        console.log('Wallet balances updated after mining block');
     }
     
     saveBlockToFile(block) {
@@ -198,40 +235,83 @@ class Blockchain {
             const data = fs.readFileSync(path.join(this.blocksDir, file));
             return JSON.parse(data);
         });
+        
+        // Recalculate wallet balances after loading blockchain
+        this.recalculateAllWalletBalances();
+    }
+    
+    recalculateAllWalletBalances() {
+        // Reset all wallet balances except owner
+        this.wallets.forEach(wallet => {
+            if (!wallet.isOwner) {
+                wallet.balance = 0;
+            }
+        });
+        
+        // Recalculate from blockchain history
+        this.chain.forEach(block => {
+            this.updateWalletBalances(block.transactions);
+        });
+        
+        console.log('All wallet balances recalculated from blockchain');
     }
     
     getBalanceOfAddress(address) {
-        // Initial wallet balance
+        // Get wallet balance directly from wallet object
         const wallet = this.wallets.find(w => w.address === address);
-        let balance = wallet ? wallet.balance : 0;
-
-        // Calculate from blockchain transactions
-        this.chain.forEach(block => {
-        block.transactions.forEach(tx => {
-            if (tx.from === address) balance -= tx.amount;
-            if (tx.to === address) balance += tx.amount;
+        return wallet ? wallet.balance : 0;
+    }
+    
+    isValidTransaction(tx) {
+        // Verify signature
+        const key = ec.keyFromPublic(tx.from, 'hex');
+        const txHash = this.hash(JSON.stringify({
+          from: tx.from,
+          to: tx.to,
+          amount: tx.amount,
+          timestamp: tx.timestamp
+        }));
+        
+        return key.verify(txHash, {
+          r: tx.signature.r,
+          s: tx.signature.s,
+          recoveryParam: tx.signature.recoveryParam
         });
-    });
-
-  return balance;
     }
     
     addTransaction(transaction) {
         const wallet = this.getWallet(transaction.from);
         if (!wallet) throw new Error('Wallet not found');
         
-        // Verify signature
-        const key = ec.keyFromPrivate(wallet.privateKey);
-        const msgHash = crypto.createHash('sha256')
-            .update(transaction.to + transaction.amount)
-            .digest('hex');
-        
-        if (!key.verify(msgHash, transaction.signature)) {
-            throw new Error('Invalid signature');
+        // Verify signature if provided
+        if (transaction.signature) {
+            const key = ec.keyFromPrivate(wallet.privateKey);
+            const msgHash = crypto.createHash('sha256')
+                .update(transaction.to + transaction.amount)
+                .digest('hex');
+            
+            if (!key.verify(msgHash, transaction.signature)) {
+                throw new Error('Invalid signature');
+            }
         }
 
-        // ... rest of validation ...
+        // Check balance
+        const balance = wallet.balance;
+        if (balance < transaction.amount) {
+            throw new Error('Insufficient balance');
+        }
+
+        // Add transaction to pending transactions
         this.pendingTransactions.push(transaction);
+        
+        // Update the sender's balance immediately to prevent double-spending
+        wallet.balance -= transaction.amount;
+        this.saveWallets();
+        
+        console.log(`Transaction added: ${transaction.from} -> ${transaction.to} (${transaction.amount} AbbuCoin)`);
+        console.log(`Updated sender balance: ${wallet.balance} AbbuCoin`);
+        
+        return true;
     }
 }
 

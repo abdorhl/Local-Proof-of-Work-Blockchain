@@ -1,54 +1,738 @@
+<!-- client/index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>uemfCoin Blockchain Explorer</title>
-    <link rel="stylesheet" href="style.css">
+    <title>AbbuCoin Blockchain Wallet</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 30px auto;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            border: none;
+        }
+        .card-header {
+            background-color: #4267B2;
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: 600;
+        }
+        .block-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .block-card {
+            background: linear-gradient(145deg, #ffffff, #f0f0f0);
+            border-radius: 8px;
+            padding: 15px;
+            width: 300px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .block-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .block-header {
+            font-weight: bold;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            color: #4267B2;
+        }
+        .block-hash {
+            font-family: monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            color: #555;
+        }
+        .tx-item {
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 8px 0;
+            font-size: 0.85rem;
+        }
+        .btn-primary {
+            background-color: #4267B2;
+            border-color: #4267B2;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+        .alert-info {
+            background-color: #e7f3fe;
+            border-color: #b6d4fe;
+            color: #0a58ca;
+        }
+        .mining-animation {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: #4267B2;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>uemfCoin Blockchain Explorer</h1>
+        <header class="text-center mb-5">
+            <h1 class="display-4 fw-bold text-primary">AbbuCoin Blockchain</h1>
+            <p class="lead">A simplified blockchain implementation with Proof-of-Work consensus</p>
         </header>
-        
-        <div class="dashboard">
-            <div class="blockchain-section">
-                <h2>Blockchain</h2>
-                <div id="blocks" class="blocks-container"></div>
-            </div>
-            
-            <div class="mempool-section">
-                <h2>Mempool</h2>
-                <div id="mempool" class="mempool-container"></div>
-            </div>
-            
-            <div class="transaction-section">
-                <h2>Create Transaction</h2>
-                <form id="transactionForm">
-                    <div class="form-group">
-                        <label for="fromAddress">From Address:</label>
-                        <input type="text" id="fromAddress" readonly>
+
+        <div class="row">
+            <!-- Left Column - Wallet & Transactions -->
+            <div class="col-md-4">
+                <!-- Wallet Section -->
+                <div class="card mb-4" id="wallet-section">
+                    <div class="card-header">Wallet</div>
+                    <div class="card-body">
+                        <!-- Login Form -->
+                        <div id="login-section">
+                            <button class="btn btn-primary btn-sm mb-3" id="create-wallet-btn">Create New Wallet</button>
+                            <div class="mb-3">
+                                <label for="privateKey" class="form-label">Private Key</label>
+                                <input type="password" class="form-control" id="privateKey" placeholder="Enter your private key">
+                            </div>
+                            <button class="btn btn-primary" id="login-btn">Login</button>
+                        </div>
+                        
+                        <!-- Wallet Info -->
+                        <div id="wallet-info" class="d-none">
+                            <div class="alert alert-info">
+                                <div><strong>Address:</strong> <span id="wallet-address" class="text-break"></span></div>
+                                <div><strong>Balance:</strong> <span id="wallet-balance"></span> AbbuCoin</div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button class="btn btn-secondary btn-sm" id="logout-btn">Logout</button>
+                                <button class="btn btn-danger btn-sm" id="delete-wallet-btn">Delete Wallet</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="toAddress">To Address:</label>
-                        <input type="text" id="toAddress" required placeholder="Enter recipient address">
+                </div>
+
+                <!-- Transaction Section -->
+                <div class="card mb-4" id="transaction-section">
+                    <div class="card-header">Send Transaction</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="to-address" class="form-label">Recipient Address</label>
+                            <input type="text" class="form-control" id="to-address" placeholder="Recipient address">
+                        </div>
+                        <div class="mb-3">
+                            <label for="amount" class="form-label">Amount</label>
+                            <input type="number" class="form-control" id="amount" placeholder="Amount" min="0">
+                        </div>
+                        <button class="btn btn-primary" id="send-tx-btn">Send Transaction</button>
                     </div>
-                    <div class="form-group">
-                        <label for="amount">Amount:</label>
-                        <input type="number" id="amount" required min="0.01" step="0.01" placeholder="0.00">
+                </div>
+
+                <!-- Mining Section -->
+                <div class="card" id="mining-section">
+                    <div class="card-header">Mining</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="miner-address" class="form-label">Miner Address</label>
+                            <input type="text" class="form-control" id="miner-address" value="miner-address-1">
+                        </div>
+                        <button class="btn btn-warning" id="mine-btn">Mine New Block</button>
+                        <div id="mining-status" class="mt-3"></div>
                     </div>
-                    <button type="submit">Send Transaction</button>
-                </form>
+                </div>
             </div>
-            
-            <div class="wallet-section">
-                <h2>Wallet Balances</h2>
-                <div id="balances"></div>
+
+            <!-- Right Column - Blockchain Visualization -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Blockchain</span>
+                        <button class="btn btn-sm btn-outline-light" id="refresh-chain-btn">Refresh</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="blockchain-info" class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <div><strong>Blocks:</strong> <span id="block-count">0</span></div>
+                                <div><strong>Difficulty:</strong> <span id="chain-difficulty">0</span></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Mempool Section -->
+                        <div class="mb-4">
+                            <h5>Pending Transactions</h5>
+                            <div id="mempool-container" class="mb-3">
+                                <div class="alert alert-secondary">No pending transactions</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Blocks Visualization -->
+                        <h5>Blocks</h5>
+                        <div id="blocks-container" class="block-container">
+                            <div class="alert alert-secondary w-100">Loading blockchain data...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <script src="app.js"></script>
+
+    <!-- New Wallet Modal -->
+    <div class="modal fade" id="new-wallet-modal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">New Wallet Created</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="new-wallet-info">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">I've Saved My Key</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/elliptic/6.5.4/elliptic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js"></script>
+    <script>
+        // Constants and global variables
+        // Directly use localhost with fixed port - avoid dynamic detection
+        const API_URL = 'http://localhost:3000';
+        
+        console.log('API endpoint set to:', API_URL);
+        
+        let currentSession = localStorage.getItem('sessionToken');
+        let walletData = null;
+        let newWalletModal = null;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            checkSession();
+            loadBlockchainData();
+            
+            // Initialize Bootstrap modal
+            newWalletModal = new bootstrap.Modal(document.getElementById('new-wallet-modal'));
+            
+            // Periodically refresh blockchain data
+            setInterval(loadBlockchainData, 30000);
+        });
+
+        function setupEventListeners() {
+            document.getElementById('create-wallet-btn').addEventListener('click', createWallet);
+            document.getElementById('login-btn').addEventListener('click', login);
+            document.getElementById('logout-btn').addEventListener('click', logout);
+            document.getElementById('delete-wallet-btn').addEventListener('click', deleteWallet);
+            document.getElementById('send-tx-btn').addEventListener('click', sendTransaction);
+            document.getElementById('mine-btn').addEventListener('click', mineBlock);
+            document.getElementById('refresh-chain-btn').addEventListener('click', loadBlockchainData);
+        }
+
+        async function createWallet() {
+            try {
+                const response = await fetch(`${API_URL}/create-wallet`, {
+                    method: 'POST'
+                });
+                const wallet = await response.json();
+                
+                document.getElementById('new-wallet-info').innerHTML = `
+                    <div class="alert alert-warning">
+                        <p class="fw-bold">IMPORTANT: Save your private key securely!</p>
+                        <p>You will need it to access your wallet in the future.</p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Address:</label>
+                        <input type="text" class="form-control" value="${wallet.address}" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Private Key:</label>
+                        <input type="text" class="form-control" value="${wallet.privateKey}" readonly>
+                    </div>
+                `;
+                
+                newWalletModal.show();
+                
+                // Store session and update UI
+                localStorage.setItem('sessionToken', wallet.sessionToken);
+                currentSession = wallet.sessionToken;
+                updateWalletInfo(wallet);
+            } catch (error) {
+                showError('Wallet creation failed: ' + error.message);
+            }
+        }
+
+        async function login() {
+            const privateKey = document.getElementById('privateKey').value;
+            if (!privateKey) {
+                showError('Please enter your private key');
+                return;
+            }
+            
+            console.log('Attempting login...');
+            console.log('API endpoint:', API_URL + '/login');
+            
+            try {
+                // First, display attempt in status
+                document.getElementById('login-btn').disabled = true;
+                document.getElementById('login-btn').textContent = 'Logging in...';
+                
+                // Create a deep copy of the data to avoid mutations
+                const loginData = JSON.stringify({ privateKey });
+                
+                console.log('Sending login request', { endpoint: API_URL + '/login' });
+                const response = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: loginData
+                });
+                
+                console.log('Response received, status:', response.status);
+                let result;
+                
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        result = await response.json();
+                        console.log('Response parsed as JSON');
+                    } catch (parseError) {
+                        console.error('Error parsing JSON response:', parseError);
+                        const text = await response.text();
+                        console.log('Raw response:', text);
+                        throw new Error('Server returned invalid JSON');
+                    }
+                } else {
+                    const text = await response.text();
+                    console.log('Server returned non-JSON response:', text);
+                    throw new Error('Server returned unexpected content type');
+                }
+                
+                if (!response.ok) {
+                    throw new Error(result.error || `HTTP error ${response.status}`);
+                }
+                
+                console.log('Login successful, processing response');
+                
+                if (!result.sessionToken) {
+                    console.error('Missing session token in response', result);
+                    throw new Error('Missing session token in response');
+                }
+                
+                localStorage.setItem('sessionToken', result.sessionToken);
+                currentSession = result.sessionToken;
+                
+                // Store the wallet data including the private key for transaction signing
+                walletData = result.wallet;
+                console.log('Wallet data received', { 
+                    address: walletData.address.substring(0, 10) + '...',
+                    balance: walletData.balance
+                });
+                
+                updateWalletInfo(result.wallet);
+                
+                // Clear password field
+                document.getElementById('privateKey').value = '';
+                showSuccess('Login successful!');
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('Login failed: ' + error.message);
+            } finally {
+                document.getElementById('login-btn').disabled = false;
+                document.getElementById('login-btn').textContent = 'Login';
+            }
+        }
+
+        async function checkSession() {
+            if (!currentSession) return;
+
+            try {
+                const response = await fetch(`${API_URL}/validate-session`, {
+                    headers: { 'Authorization': currentSession }
+                });
+                
+                if (!response.ok) {
+                    localStorage.removeItem('sessionToken');
+                    return;
+                }
+                
+                walletData = await response.json();
+                updateWalletInfo(walletData);
+            } catch (error) {
+                console.error('Session check failed:', error);
+                localStorage.removeItem('sessionToken');
+            }
+        }
+
+        function updateWalletInfo(wallet) {
+            walletData = wallet;
+            
+            // Show wallet info, hide login form
+            document.getElementById('login-section').classList.add('d-none');
+            document.getElementById('wallet-info').classList.remove('d-none');
+            
+            // Update wallet display
+            document.getElementById('wallet-address').textContent = wallet.address;
+            document.getElementById('wallet-balance').textContent = wallet.balance;
+            
+            // Update mining address field
+            document.getElementById('miner-address').value = wallet.address;
+        }
+
+        async function logout() {
+            try {
+                await fetch(`${API_URL}/logout`, {
+                    method: 'POST',
+                    headers: { 'Authorization': currentSession }
+                });
+            } catch (error) {
+                console.error('Logout error:', error);
+            } finally {
+                localStorage.removeItem('sessionToken');
+                currentSession = null;
+                walletData = null;
+                
+                // Show login form, hide wallet info
+                document.getElementById('login-section').classList.remove('d-none');
+                document.getElementById('wallet-info').classList.add('d-none');
+            }
+        }
+
+        async function deleteWallet() {
+            if (!confirm('Are you sure you want to delete this wallet? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                await fetch(`${API_URL}/delete-wallet`, {
+                    method: 'POST',
+                    headers: { 'Authorization': currentSession }
+                });
+                
+                logout();
+                showSuccess('Wallet deleted successfully');
+            } catch (error) {
+                showError('Failed to delete wallet: ' + error.message);
+            }
+        }
+
+        async function sendTransaction() {
+            if (!walletData) {
+                showError('Please login first');
+                return;
+            }
+            
+            const toAddress = document.getElementById('to-address').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            
+            if (!toAddress || isNaN(amount) || amount <= 0) {
+                showError('Please enter a valid recipient address and amount');
+                return;
+            }
+            
+            try {
+                // Create a transaction signature using the wallet's private key
+                const EC = elliptic.ec('secp256k1');
+                const key = EC.keyFromPrivate(walletData.privateKey);
+                const msgHash = sha256.create().update(toAddress + amount).hex();
+                const signature = key.sign(msgHash);
+                
+                // Convert signature to format expected by server
+                const formattedSignature = {
+                    r: signature.r.toString(16),
+                    s: signature.s.toString(16),
+                    recoveryParam: signature.recoveryParam
+                };
+                
+                const response = await fetch(`${API_URL}/transaction`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: walletData.address,
+                        to: toAddress,
+                        amount: amount,
+                        signature: formattedSignature
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Transaction failed');
+                }
+                
+                // Update wallet balance in the UI immediately
+                const currentBalance = parseFloat(document.getElementById('wallet-balance').textContent);
+                document.getElementById('wallet-balance').textContent = (currentBalance - amount).toFixed(2);
+                
+                // Update the local walletData object
+                walletData.balance -= amount;
+                
+                showSuccess('Transaction submitted successfully');
+                document.getElementById('to-address').value = '';
+                document.getElementById('amount').value = '';
+                
+                // Reload blockchain data
+                loadBlockchainData();
+            } catch (error) {
+                showError('Transaction failed: ' + error.message);
+            }
+        }
+
+        async function mineBlock() {
+            const minerAddress = document.getElementById('miner-address').value;
+            
+            if (!minerAddress) {
+                showError('Please enter a miner address');
+                return;
+            }
+            
+            try {
+                // Show mining animation
+                document.getElementById('mining-status').innerHTML = `
+                    <div class="alert alert-warning">
+                        <div class="mining-animation"></div>
+                        Mining in progress...
+                    </div>
+                `;
+                
+                const response = await fetch(`${API_URL}/mine`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ minerAddress })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Mining failed');
+                }
+                
+                const result = await response.json();
+                
+                document.getElementById('mining-status').innerHTML = `
+                    <div class="alert alert-success">
+                        Block #${result.block.index} mined successfully!
+                    </div>
+                `;
+                
+                // Reload blockchain data
+                loadBlockchainData();
+                
+                // If logged in, refresh wallet balance
+                if (walletData) {
+                    refreshWalletBalance();
+                }
+            } catch (error) {
+                document.getElementById('mining-status').innerHTML = `
+                    <div class="alert alert-danger">
+                        Mining failed: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function loadBlockchainData() {
+            try {
+                // Fetch blocks
+                const blocksResponse = await fetch(`${API_URL}/blocks`);
+                const blocks = await blocksResponse.json();
+                
+                // Fetch pending transactions
+                const mempoolResponse = await fetch(`${API_URL}/mempool`);
+                const pendingTransactions = await mempoolResponse.json();
+                
+                // Update blockchain info
+                document.getElementById('block-count').textContent = blocks.length;
+                
+                // Set difficulty if available
+                if (blocks.length > 0) {
+                    // Assuming difficulty is consistent - could be updated to fetch from config
+                    const difficulty = blocks[0].hash.startsWith('00') ? 2 : 
+                                       blocks[0].hash.startsWith('0') ? 1 : 0;
+                    document.getElementById('chain-difficulty').textContent = difficulty;
+                }
+                
+                // Render blocks
+                renderBlocks(blocks);
+                
+                // Render pending transactions
+                renderMempool(pendingTransactions);
+                
+                // If logged in, refresh wallet balance
+                if (walletData) {
+                    refreshWalletBalance();
+                }
+            } catch (error) {
+                console.error('Failed to load blockchain data:', error);
+                document.getElementById('blocks-container').innerHTML = `
+                    <div class="alert alert-danger w-100">
+                        Failed to load blockchain data: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function renderBlocks(blocks) {
+            if (!blocks || blocks.length === 0) {
+                document.getElementById('blocks-container').innerHTML = `
+                    <div class="alert alert-secondary w-100">No blocks found</div>
+                `;
+                return;
+            }
+            
+            // Sort blocks by index in descending order (newest first)
+            const sortedBlocks = [...blocks].sort((a, b) => b.index - a.index);
+            
+            document.getElementById('blocks-container').innerHTML = sortedBlocks.map(block => `
+                <div class="block-card">
+                    <div class="block-header">
+                        Block #${block.index}
+                    </div>
+                    <div class="mb-2">
+                        <strong>Timestamp:</strong> ${new Date(block.timestamp).toLocaleString()}
+                    </div>
+                    <div class="mb-2">
+                        <strong>Hash:</strong> 
+                        <div class="block-hash">${block.hash.substring(0, 20)}...</div>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Previous Hash:</strong>
+                        <div class="block-hash">${block.previousHash === '0' ? 'Genesis Block' : block.previousHash.substring(0, 20) + '...'}</div>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Nonce:</strong> ${block.nonce}
+                    </div>
+                    <div>
+                        <strong>Transactions:</strong> ${block.transactions.length}
+                        ${renderTransactions(block.transactions)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTransactions(transactions) {
+            if (!transactions || transactions.length === 0) {
+                return '<div class="mt-2 text-muted">No transactions</div>';
+            }
+            
+            return `
+                <div class="mt-2">
+                    ${transactions.map(tx => `
+                        <div class="tx-item">
+                            <div><strong>From:</strong> ${tx.from ? tx.from.substring(0, 10) + '...' : 'Coinbase'}</div>
+                            <div><strong>To:</strong> ${tx.to.substring(0, 10)}...</div>
+                            <div><strong>Amount:</strong> ${tx.amount} AbbuCoin</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderMempool(transactions) {
+            if (!transactions || transactions.length === 0) {
+                document.getElementById('mempool-container').innerHTML = `
+                    <div class="alert alert-secondary">No pending transactions</div>
+                `;
+                return;
+            }
+            
+            document.getElementById('mempool-container').innerHTML = `
+                <div class="alert alert-warning">
+                    ${transactions.length} transaction(s) waiting to be mined
+                </div>
+                ${transactions.map(tx => `
+                    <div class="tx-item">
+                        <div><strong>From:</strong> ${tx.from ? tx.from.substring(0, 15) + '...' : 'Coinbase'}</div>
+                        <div><strong>To:</strong> ${tx.to.substring(0, 15)}...</div>
+                        <div><strong>Amount:</strong> ${tx.amount} AbbuCoin</div>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        async function refreshWalletBalance() {
+            try {
+                const response = await fetch(`${API_URL}/validate-session`, {
+                    headers: { 'Authorization': currentSession }
+                });
+                
+                if (!response.ok) {
+                    return;
+                }
+                
+                const wallet = await response.json();
+                document.getElementById('wallet-balance').textContent = wallet.balance;
+            } catch (error) {
+                console.error('Failed to refresh wallet balance:', error);
+            }
+        }
+
+        function showError(message) {
+            console.error('Error:', message);
+            
+            // Create a Bootstrap alert for better visibility
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            
+            alertDiv.innerHTML = `
+                <strong>Error!</strong> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            // Create a Bootstrap alert for better visibility
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '9999';
+            
+            alertDiv.innerHTML = `
+                <strong>Success!</strong> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            document.body.appendChild(alertDiv);
+            
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.parentNode.removeChild(alertDiv);
+                }
+            }, 5000);
+        }
+    </script>
 </body>
 </html>

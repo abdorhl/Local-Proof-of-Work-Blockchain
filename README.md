@@ -1,4 +1,4 @@
-# uemfCoin Blockchain - Simplified Local Proof-of-Work Implementation
+# AbbuCoin Blockchain - Simplified Local Proof-of-Work Implementation
 
 A simplified blockchain implementation with Proof-of-Work consensus, designed for educational purposes. This version removes wallet cryptography complexity while maintaining core blockchain functionality.
 
@@ -19,8 +19,8 @@ A simplified blockchain implementation with Proof-of-Work consensus, designed fo
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/uemfcoin-blockchain.git
-cd uemfcoin-blockchain
+git clone https://github.com/yourusername/abbucoin-blockchain.git
+cd abbucoin-blockchain
 ```
 
 2. Install dependencies:
@@ -31,7 +31,7 @@ npm install
 ## Project Structure
 
 ```
-uemfcoin-blockchain/
+abbucoin-blockchain/
 ├── server/               # Blockchain node server
 │   ├── blockchain.js     # Blockchain core logic
 │   ├── mempool.js        # Transaction mempool
