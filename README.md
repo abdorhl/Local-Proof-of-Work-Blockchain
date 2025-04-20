@@ -19,7 +19,7 @@ A simplified blockchain implementation with Proof-of-Work consensus, designed fo
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/abbucoin-blockchain.git
+git clone https://github.com/abdorhl/Local-Proof-of-Work-Blockchain.git
 cd abbucoin-blockchain
 ```
 
